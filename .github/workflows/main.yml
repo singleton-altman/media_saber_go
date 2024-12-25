@@ -74,7 +74,7 @@ jobs:
       - name: Update version.json
         run: |
           VERSION_NAME=${{ github.ref_name }}
-          DOWNLOAD_URL=https://github.com/huangpj0210/msaber-android/releases/download/${{ github.ref_name }}/app-release.apk
+          DOWNLOAD_URL=https://github.com/singleton-altman/media_saber_go/releases/download/${{ github.ref_name }}/app-release.apk
           jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" version.json > version.tmp && mv version.tmp version.json
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
