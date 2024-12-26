@@ -30,7 +30,7 @@ jobs:
 
       - name: Build APK
         run: |
-          cd ./msaber-flutter
+          cd ./media_saber_flutter_3
           flutter pub get
           flutter build apk --release
 
@@ -52,14 +52,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./msaber-flutter/build/app/outputs/flutter-apk/app-release.apk
+          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
           asset_name: app-release.apk
           asset_content_type: application/vnd.android.package-archive
 
       - name: Calculate APK Size and MD5
         id: calculate_apk
         run: |
-          APK_PATH=./msaber-flutter/build/app/outputs/flutter-apk/app-release.apk
+          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
           APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
           APK_SIZE=$((APK_SIZE_BYTES / 1024))
           APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
