@@ -2,9 +2,9 @@
   "isForce": false,
   "isIgnorable": false,
   "versionCode": 10103,
-  "versionName": "1.1.6",
+  "versionName": "1.2.0",
   "updateContent": "修复 bug，优化体验。",
-  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.1.6/app-release.apk",
-  "apkSize": 41709,
-  "apkMd5": "dd1cd568844e9bda7fd7deca3c3ba2a4"
+  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.2.0/app-release.apk",
+  "apkSize": 44443,
+  "apkMd5": "81e47a284b25908f020b2de18b68c7a8"
 }
