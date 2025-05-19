@@ -2,9 +2,9 @@
   "isForce": false,
   "isIgnorable": false,
   "versionCode": 10103,
-  "versionName": "1.4.0",
+  "versionName": "1.4.1",
   "updateContent": "修复 bug，优化体验。",
-  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.4.0/app-release.apk",
-  "apkSize": 46089,
-  "apkMd5": "88760186ad72b870739e74b779ec3d50"
+  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.4.1/app-release.apk",
+  "apkSize": 46088,
+  "apkMd5": "8e290155bc51c251dfae537faf707543"
 }
