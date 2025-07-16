@@ -2,9 +2,9 @@
   "isForce": false,
   "isIgnorable": false,
   "versionCode": 10103,
-  "versionName": "1.4.5",
+  "versionName": "1.4.7",
   "updateContent": "修复 bug，优化体验。",
-  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.4.5/app-release.apk",
-  "apkSize": 47016,
-  "apkMd5": "3f9ba154057c3e53178ff89b36c194cc"
+  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.4.7/app-release.apk",
+  "apkSize": 47185,
+  "apkMd5": "2d5dd247ce9831b3ac75aced3fbeac1a"
 }
