@@ -20,7 +20,7 @@ jobs:
         with:
           repository: ${{ secrets.REPOSITORY }}
           path: './media_saber_flutter_3'
-          ref: 'dev-2'
+          ref: 'dev'
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
       - name: Set up Flutter
