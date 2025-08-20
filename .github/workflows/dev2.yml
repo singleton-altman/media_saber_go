@@ -34,6 +34,13 @@ jobs:
           flutter pub get
           flutter build apk --release
 
+      - name: Read version from pubspec.yaml
+        id: read_version
+        run: |
+          VERSION=$(grep -E '^version:' ./media_saber_flutter_3/pubspec.yaml | head -1 | awk '{print $2}' | cut -d '+' -f1)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_NAME=$VERSION-dev" >> $GITHUB_ENV
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -41,10 +48,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          release_name: ${{ env.VERSION_NAME }}
           draft: false
           prerelease: false
-
+          
       - name: Upload Release Asset
         id: upload_release_asset
         uses: actions/upload-release-asset@v1
@@ -55,30 +62,3 @@ jobs:
           asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
           asset_name: app-release.apk
           asset_content_type: application/vnd.android.package-archive
-
-      - name: Calculate APK Size and MD5
-        id: calculate_apk
-        run: |
-          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
-          APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
-          APK_SIZE=$((APK_SIZE_BYTES / 1024))
-          APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
-          echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
-          echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
-
-      - name: Switch to main branch
-        run: |
-          git fetch origin
-          git switch -C main origin/main
-
-      - name: Update version.json
-        run: |
-          VERSION_NAME=${{ github.ref_name }}
-          DOWNLOAD_URL=https://github.com/singleton-altman/media_saber_go/releases/download/${{ github.ref_name }}/app-release.apk
-          jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" version.json > version.tmp && mv version.tmp version.json
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git commit -m "Update version.json for release $VERSION_NAME"
-          # git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git push
