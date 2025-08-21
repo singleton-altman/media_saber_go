@@ -3,82 +3,117 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - '*-dis'
+      - '*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        branch: [main, dev]
 
     steps:
-      - name: Checkout code from main repository
+      - name: "[${{ matrix.branch }}] Checkout main repo"
         uses: actions/checkout@v3
         with:
-          ref: 'main'
+          ref: main
 
-      - name: Checkout code from another repository
+      - name: "[${{ matrix.branch }}] Checkout Flutter repo"
         uses: actions/checkout@v3
         with:
           repository: ${{ secrets.REPOSITORY }}
           path: './media_saber_flutter_3'
-          ref: 'main'
+          ref: ${{ matrix.branch }}
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
-      - name: Set up Flutter
+      - name: "[${{ matrix.branch }}] Set up Flutter"
         uses: subosito/flutter-action@v1
         with:
           flutter-version: '3.32.8'
 
-      - name: Build APK
+      - name: "[${{ matrix.branch }}] Build APK"
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
           flutter build apk --release
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Asset
-        id: upload_release_asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
-          asset_name: app-release.apk
-          asset_content_type: application/vnd.android.package-archive
-
-      - name: Calculate APK Size and MD5
+      - name: "[${{ matrix.branch }}] Calculate APK Size and MD5"
         id: calculate_apk
         run: |
           APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
           APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
           APK_SIZE=$((APK_SIZE_BYTES / 1024))
           APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
+          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
 
-      - name: Switch to main branch
+      - name: "[${{ matrix.branch }}] Delete old dev release and tag"
+        if: matrix.branch == 'dev'
         run: |
-          git fetch origin
-          git switch -C main origin/main
+          DEV_TAG="${{ github.ref_name }}-dev"
+          echo "Cleaning old dev release and tag: $DEV_TAG"
 
-      - name: Update version.json
+          gh release delete "$DEV_TAG" -y || echo "No old release found"
+          git push origin ":refs/tags/$DEV_TAG" || echo "No old tag found"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
+
+      - name: "[${{ matrix.branch }}] Create Release"
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
+        with:
+          tag_name: ${{ matrix.branch == 'main' && github.ref_name || format('{0}-dev', github.ref_name) }}
+          release_name: ${{ matrix.branch == 'main' && format('Release {0}', github.ref_name) || format('Dev Release {0}', github.ref_name) }}
+          draft: false
+          prerelease: ${{ matrix.branch == 'dev' }}
+
+      - name: "[${{ matrix.branch }}] Upload Release Asset"
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
+          asset_name: ${{ matrix.branch == 'main' && 'app-release.apk' || 'app-release-dev.apk' }}
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: "[${{ matrix.branch }}] Ensure version.json exists"
+        if: matrix.branch == 'main'
+        run: |
+          if [ ! -f version.json ]; then
+            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > version.json
+          fi
+
+      - name: "[${{ matrix.branch }}] Update version.json"
+        if: matrix.branch == 'main'
         run: |
           VERSION_NAME=${{ github.ref_name }}
-          DOWNLOAD_URL=https://github.com/singleton-altman/media_saber_go/releases/download/${{ github.ref_name }}/app-release.apk
+          DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-release.apk
           jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" version.json > version.tmp && mv version.tmp version.json
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add version.json
           git commit -m "Update version.json for release $VERSION_NAME"
-          # git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git push
+
+      - name: "[${{ matrix.branch }}] Ensure version-dev.json exists"
+        if: matrix.branch == 'dev'
+        run: |
+          if [ ! -f version-dev.json ]; then
+            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > version-dev.json
+          fi
+
+      - name: "[${{ matrix.branch }}] Update version-dev.json"
+        if: matrix.branch == 'dev'
+        run: |
+          VERSION_NAME=${{ github.ref_name }}-dev
+          DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}-dev/app-release-dev.apk
+          jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" version-dev.json > version.tmp && mv version.tmp version-dev.json
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add version-dev.json
+          git commit -m "Update version-dev.json for release $VERSION_NAME"
           git push
