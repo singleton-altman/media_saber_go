@@ -13,11 +13,13 @@ jobs:
         branch: [main, dev]
 
     steps:
+      # Checkout 主仓库
       - name: "[${{ matrix.branch }}] Checkout main repo"
         uses: actions/checkout@v3
         with:
           ref: main
 
+      # Checkout Flutter 子仓库
       - name: "[${{ matrix.branch }}] Checkout Flutter repo"
         uses: actions/checkout@v3
         with:
@@ -26,17 +28,20 @@ jobs:
           ref: ${{ matrix.branch }}
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
+      # 设置 Flutter
       - name: "[${{ matrix.branch }}] Set up Flutter"
         uses: subosito/flutter-action@v1
         with:
           flutter-version: '3.32.8'
 
+      # 构建 APK
       - name: "[${{ matrix.branch }}] Build APK"
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
           flutter build apk --release
 
+      # 计算 APK 大小和 MD5
       - name: "[${{ matrix.branch }}] Calculate APK Size and MD5"
         id: calculate_apk
         run: |
@@ -48,17 +53,18 @@ jobs:
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
 
+      # 删除旧 dev release 和 tag
       - name: "[${{ matrix.branch }}] Delete old dev release and tag"
         if: matrix.branch == 'dev'
         run: |
           DEV_TAG="${{ github.ref_name }}-dev"
           echo "Cleaning old dev release and tag: $DEV_TAG"
-
           gh release delete "$DEV_TAG" -y || echo "No old release found"
           git push origin ":refs/tags/$DEV_TAG" || echo "No old tag found"
         env:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
+      # 创建 Release
       - name: "[${{ matrix.branch }}] Create Release"
         id: create_release
         uses: actions/create-release@v1
@@ -70,6 +76,7 @@ jobs:
           draft: false
           prerelease: ${{ matrix.branch == 'dev' }}
 
+      # 上传 Release APK
       - name: "[${{ matrix.branch }}] Upload Release Asset"
         uses: actions/upload-release-asset@v1
         env:
@@ -80,40 +87,36 @@ jobs:
           asset_name: ${{ matrix.branch == 'main' && 'app-release.apk' || 'app-release-dev.apk' }}
           asset_content_type: application/vnd.android.package-archive
 
-      - name: "[${{ matrix.branch }}] Ensure version.json exists"
-        if: matrix.branch == 'main'
+      # 更新 version.json/version-dev.json
+      - name: "[${{ matrix.branch }}] Update version JSON"
         run: |
-          if [ ! -f version.json ]; then
-            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > version.json
+          # 根据分支设置文件名和下载后缀
+          if [ "${{ matrix.branch }}" == "main" ]; then
+            VERSION_FILE="version.json"
+            DOWNLOAD_SUFFIX=""
+          else
+            VERSION_FILE="version-dev.json"
+            DOWNLOAD_SUFFIX="-dev"
           fi
 
-      - name: "[${{ matrix.branch }}] Update version.json"
-        if: matrix.branch == 'main'
-        run: |
+          # 确保文件存在
+          if [ ! -f $VERSION_FILE ]; then
+            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > $VERSION_FILE
+          fi
+
           VERSION_NAME=${{ github.ref_name }}
-          DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-release.apk
-          jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" version.json > version.tmp && mv version.tmp version.json
+          DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${VERSION_NAME}${DOWNLOAD_SUFFIX}/app-release${DOWNLOAD_SUFFIX}.apk
+
+          # 更新 JSON
+          jq ".versionName = \"$VERSION_NAME$DOWNLOAD_SUFFIX\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" $VERSION_FILE > version.tmp && mv version.tmp $VERSION_FILE
+
+          # 配置 Git
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git commit -m "Update version.json for release $VERSION_NAME"
-          git push
 
-      - name: "[${{ matrix.branch }}] Ensure version-dev.json exists"
-        if: matrix.branch == 'dev'
-        run: |
-          if [ ! -f version-dev.json ]; then
-            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > version-dev.json
-          fi
+          git add $VERSION_FILE
+          git commit -m "Update $VERSION_FILE for release $VERSION_NAME$DOWNLOAD_SUFFIX" || echo "No changes to commit"
 
-      - name: "[${{ matrix.branch }}] Update version-dev.json"
-        if: matrix.branch == 'dev'
-        run: |
-          VERSION_NAME=${{ github.ref_name }}-dev
-          DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}-dev/app-release-dev.apk
-          jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" version-dev.json > version.tmp && mv version.tmp version-dev.json
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add version-dev.json
-          git commit -m "Update version-dev.json for release $VERSION_NAME"
-          git push
+          # 安全 pull & push，避免非快进被拒绝
+          git pull --rebase origin ${{ matrix.branch }}
+          git push origin ${{ matrix.branch }}
