@@ -118,5 +118,5 @@ jobs:
           git commit -m "Update $VERSION_FILE for release $VERSION_NAME$DOWNLOAD_SUFFIX" || echo "No changes to commit"
 
           # 安全 pull & push，避免非快进被拒绝
-          git pull --rebase origin ${{ matrix.branch }}
-          git push origin ${{ matrix.branch }}
+          git pull --rebase origin main
+          git push origin main
