@@ -57,13 +57,13 @@ jobs:
           fi
           echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
 
-      # 构建 APK 并直接生成目标名称
+      # 构建 APK
       - name: "Build APK"
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
-          flutter build apk --release --target-platform android-arm,android-arm64,android-x64 \
-            --output=build/app/outputs/flutter-apk/${APK_NAME}
+          flutter build apk --release
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/$APK_NAME
 
       # 计算 APK 大小和 MD5
       - name: "Calculate APK Size and MD5"
