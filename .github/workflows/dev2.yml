@@ -1,9 +1,9 @@
-name: dev-2
+name: dev
 on:
   workflow_dispatch:
   push:
     tags:
-      - '*'
+      - '*-dev'
 
 jobs:
   build:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code from main repository
         uses: actions/checkout@v3
         with:
-          ref: 'main'
+          ref: ${{ github.ref_name }}
 
       - name: Checkout code from another repository
         uses: actions/checkout@v3
@@ -34,12 +34,11 @@ jobs:
           flutter pub get
           flutter build apk --release
 
-      - name: Read version from pubspec.yaml
-        id: read_version
+      # 直接用 tag 作为版本号
+      - name: Set version from tag
         run: |
-          VERSION=$(grep -E '^version:' ./media_saber_flutter_3/pubspec.yaml | head -1 | awk '{print $2}' | cut -d '+' -f1)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION_NAME=$VERSION-dev" >> $GITHUB_ENV
+          echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          echo "VERSION_NAME=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
       - name: Create Release
         id: create_release
