@@ -3,46 +3,57 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - '*'
+      - '*'  # 所有 tag 都触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        branch: [main, dev]
-
     steps:
+      # 判断 tag 是否包含 "dev"，选择分支
+      - name: "Set branch based on tag"
+        id: set_branch
+        run: |
+          TAG_NAME=${GITHUB_REF##*/}
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          if [[ "$TAG_NAME" == *dev* ]]; then
+            echo "BRANCH=dev" >> $GITHUB_ENV
+            echo "DOWNLOAD_SUFFIX=-dev" >> $GITHUB_ENV
+          else
+            echo "BRANCH=main" >> $GITHUB_ENV
+            echo "DOWNLOAD_SUFFIX=" >> $GITHUB_ENV
+          fi
+          echo "Branch to build: $BRANCH"
+
       # Checkout 主仓库
-      - name: "[${{ matrix.branch }}] Checkout main repo"
+      - name: "Checkout main repo"
         uses: actions/checkout@v3
         with:
-          ref: main
+          ref: ${{ env.BRANCH }}
 
       # Checkout Flutter 子仓库
-      - name: "[${{ matrix.branch }}] Checkout Flutter repo"
+      - name: "Checkout Flutter repo"
         uses: actions/checkout@v3
         with:
           repository: ${{ secrets.REPOSITORY }}
           path: './media_saber_flutter_3'
-          ref: ${{ matrix.branch }}
+          ref: ${{ env.BRANCH }}
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
       # 设置 Flutter
-      - name: "[${{ matrix.branch }}] Set up Flutter"
+      - name: "Set up Flutter"
         uses: subosito/flutter-action@v1
         with:
           flutter-version: '3.32.8'
 
       # 构建 APK
-      - name: "[${{ matrix.branch }}] Build APK"
+      - name: "Build APK"
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
           flutter build apk --release
 
       # 计算 APK 大小和 MD5
-      - name: "[${{ matrix.branch }}] Calculate APK Size and MD5"
+      - name: "Calculate APK Size and MD5"
         id: calculate_apk
         run: |
           APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
@@ -53,50 +64,37 @@ jobs:
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
 
-      # 删除旧 dev release 和 tag
-      - name: "[${{ matrix.branch }}] Delete old dev release and tag"
-        if: matrix.branch == 'dev'
-        run: |
-          DEV_TAG="${{ github.ref_name }}-dev"
-          echo "Cleaning old dev release and tag: $DEV_TAG"
-          gh release delete "$DEV_TAG" -y || echo "No old release found"
-          git push origin ":refs/tags/$DEV_TAG" || echo "No old tag found"
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
-
       # 创建 Release
-      - name: "[${{ matrix.branch }}] Create Release"
+      - name: "Create Release"
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
-          tag_name: ${{ matrix.branch == 'main' && github.ref_name || format('{0}-dev', github.ref_name) }}
-          release_name: ${{ matrix.branch == 'main' && format('Release {0}', github.ref_name) || format('Dev Release {0}', github.ref_name) }}
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: ${{ env.BRANCH == 'main' && format('Release {0}', env.TAG_NAME) || format('Dev Release {0}', env.TAG_NAME) }}
           draft: false
-          prerelease: ${{ matrix.branch == 'dev' }}
+          prerelease: ${{ env.BRANCH == 'dev' }}
 
       # 上传 Release APK
-      - name: "[${{ matrix.branch }}] Upload Release Asset"
+      - name: "Upload Release Asset"
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
-          asset_name: ${{ matrix.branch == 'main' && 'app-release.apk' || 'app-release-dev.apk' }}
+          asset_name: ${{ env.BRANCH == 'main' && 'app-release.apk' || 'app-release-dev.apk' }}
           asset_content_type: application/vnd.android.package-archive
 
-      # 更新 version.json/version-dev.json
-      - name: "[${{ matrix.branch }}] Update version JSON"
+      # 更新 version JSON
+      - name: "Update version JSON"
         run: |
-          # 根据分支设置文件名和下载后缀
-          if [ "${{ matrix.branch }}" == "main" ]; then
+          # 设置文件名
+          if [ "$BRANCH" == "main" ]; then
             VERSION_FILE="version.json"
-            DOWNLOAD_SUFFIX=""
           else
             VERSION_FILE="version-dev.json"
-            DOWNLOAD_SUFFIX="-dev"
           fi
 
           # 确保文件存在
@@ -104,19 +102,15 @@ jobs:
             echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > $VERSION_FILE
           fi
 
-          VERSION_NAME=${{ github.ref_name }}
-          DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${VERSION_NAME}${DOWNLOAD_SUFFIX}/app-release${DOWNLOAD_SUFFIX}.apk
+          VERSION_NAME=$TAG_NAME
+          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/app-release${DOWNLOAD_SUFFIX}.apk
 
-          # 更新 JSON
-          jq ".versionName = \"$VERSION_NAME$DOWNLOAD_SUFFIX\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" $VERSION_FILE > version.tmp && mv version.tmp $VERSION_FILE
+          jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" $VERSION_FILE > version.tmp && mv version.tmp $VERSION_FILE
 
-          # 配置 Git
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           git add $VERSION_FILE
-          git commit -m "Update $VERSION_FILE for release $VERSION_NAME$DOWNLOAD_SUFFIX" || echo "No changes to commit"
-
-          # 安全 pull & push，避免非快进被拒绝
+          git commit -m "Update $VERSION_FILE for release $VERSION_NAME" || echo "No changes to commit"
           git pull --rebase origin main
-          git push origin main
+          git push origin HEAD:main
