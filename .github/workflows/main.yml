@@ -9,34 +9,34 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 判断 tag 是否包含 "dev"，选择分支
-      - name: "Set branch based on tag"
-        id: set_branch
+      # 解析 tag 并设置 Flutter 分支
+      - name: "Determine Flutter branch"
+        id: set_fl_branch
         run: |
           TAG_NAME=${GITHUB_REF##*/}
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
           if [[ "$TAG_NAME" == *dev* ]]; then
-            echo "BRANCH=dev" >> $GITHUB_ENV
+            echo "FLUTTER_BRANCH=dev" >> $GITHUB_ENV
             echo "DOWNLOAD_SUFFIX=-dev" >> $GITHUB_ENV
           else
-            echo "BRANCH=main" >> $GITHUB_ENV
+            echo "FLUTTER_BRANCH=main" >> $GITHUB_ENV
             echo "DOWNLOAD_SUFFIX=" >> $GITHUB_ENV
           fi
-          echo "Branch to build: $BRANCH"
+          echo "Flutter branch to build: $FLUTTER_BRANCH"
 
-      # Checkout 主仓库
+      # Checkout 主仓库（始终 main）
       - name: "Checkout main repo"
         uses: actions/checkout@v3
         with:
-          ref: ${{ env.BRANCH }}
+          ref: main
 
-      # Checkout Flutter 子仓库
+      # Checkout Flutter 子仓库，根据 tag 决定 main/dev
       - name: "Checkout Flutter repo"
         uses: actions/checkout@v3
         with:
           repository: ${{ secrets.REPOSITORY }}
           path: './media_saber_flutter_3'
-          ref: ${{ env.BRANCH }}
+          ref: ${{ env.FLUTTER_BRANCH }}
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
       # 设置 Flutter
@@ -45,24 +45,48 @@ jobs:
         with:
           flutter-version: '3.32.8'
 
-      # 构建 APK
+      # 设置 APK 名称带日期
+      - name: "Set APK filename with date"
+        run: |
+          DATE_SUFFIX=$(date +'%d-%H')
+          echo "DATE_SUFFIX=$DATE_SUFFIX" >> $GITHUB_ENV
+          if [ "$FLUTTER_BRANCH" == "main" ]; then
+            APK_NAME="release-${TAG_NAME}-${DATE_SUFFIX}.apk"
+          else
+            APK_NAME="dev-${TAG_NAME}-${DATE_SUFFIX}.apk"
+          fi
+          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+
+      # 构建 APK 并直接生成目标名称
       - name: "Build APK"
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --target-platform android-arm,android-arm64,android-x64 \
+            --output=build/app/outputs/flutter-apk/${APK_NAME}
 
       # 计算 APK 大小和 MD5
       - name: "Calculate APK Size and MD5"
         id: calculate_apk
         run: |
-          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
+          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/$APK_NAME
           APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
           APK_SIZE=$((APK_SIZE_BYTES / 1024))
           APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
+
+      # 删除旧 dev release 和 tag（可选）
+      - name: "Delete old dev release and tag"
+        if: env.FLUTTER_BRANCH == 'dev'
+        run: |
+          DEV_TAG=$TAG_NAME
+          echo "Cleaning old dev release and tag: $DEV_TAG"
+          gh release delete "$DEV_TAG" -y || echo "No old release found"
+          git push origin ":refs/tags/$DEV_TAG" || echo "No old tag found"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
       # 创建 Release
       - name: "Create Release"
@@ -72,9 +96,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
           tag_name: ${{ env.TAG_NAME }}
-          release_name: ${{ env.BRANCH == 'main' && format('Release {0}', env.TAG_NAME) || format('Dev Release {0}', env.TAG_NAME) }}
+          release_name: ${{ env.FLUTTER_BRANCH == 'main' && format('Release {0}', env.TAG_NAME) || format('Dev Release {0}', env.TAG_NAME) }}
           draft: false
-          prerelease: ${{ env.BRANCH == 'dev' }}
+          prerelease: ${{ env.FLUTTER_BRANCH == 'dev' }}
 
       # 上传 Release APK
       - name: "Upload Release Asset"
@@ -83,27 +107,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/app-release.apk
-          asset_name: ${{ env.BRANCH == 'main' && 'app-release.apk' || 'app-release-dev.apk' }}
+          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/$APK_NAME
+          asset_name: ${{ env.APK_NAME }}
           asset_content_type: application/vnd.android.package-archive
 
-      # 更新 version JSON
+      # 更新 version JSON（主仓库根目录）
       - name: "Update version JSON"
         run: |
-          # 设置文件名
-          if [ "$BRANCH" == "main" ]; then
+          if [ "$FLUTTER_BRANCH" == "main" ]; then
             VERSION_FILE="version.json"
           else
             VERSION_FILE="version-dev.json"
           fi
 
-          # 确保文件存在
           if [ ! -f $VERSION_FILE ]; then
             echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > $VERSION_FILE
           fi
 
           VERSION_NAME=$TAG_NAME
-          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/app-release${DOWNLOAD_SUFFIX}.apk
+          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/$APK_NAME
 
           jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" $VERSION_FILE > version.tmp && mv version.tmp $VERSION_FILE
 
