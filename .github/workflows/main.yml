@@ -41,7 +41,7 @@ jobs:
 
       - name: "Set APK filename with date"
         run: |
-          DATE_SUFFIX=$(date +'%M%d-%H%M')
+          DATE_SUFFIX=$(date +'%y.%m.%d-%H')
           if [ "$FLUTTER_BRANCH" == "main" ]; then
             APK_NAME="release-${TAG_NAME}-${DATE_SUFFIX}.apk"
           else
