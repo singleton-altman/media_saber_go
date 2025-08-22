@@ -3,13 +3,12 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - '*'  # 所有 tag 都触发
+      - '*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 解析 tag 并设置 Flutter 分支
       - name: "Determine Flutter branch"
         id: set_fl_branch
         run: |
@@ -17,20 +16,16 @@ jobs:
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
           if [[ "$TAG_NAME" == *dev* ]]; then
             echo "FLUTTER_BRANCH=dev" >> $GITHUB_ENV
-            echo "DOWNLOAD_SUFFIX=-dev" >> $GITHUB_ENV
           else
             echo "FLUTTER_BRANCH=main" >> $GITHUB_ENV
-            echo "DOWNLOAD_SUFFIX=" >> $GITHUB_ENV
           fi
           echo "Flutter branch to build: $FLUTTER_BRANCH"
 
-      # Checkout 主仓库（始终 main）
       - name: "Checkout main repo"
         uses: actions/checkout@v3
         with:
           ref: main
 
-      # Checkout Flutter 子仓库，根据 tag 决定 main/dev
       - name: "Checkout Flutter repo"
         uses: actions/checkout@v3
         with:
@@ -39,37 +34,33 @@ jobs:
           ref: ${{ env.FLUTTER_BRANCH }}
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
-      # 设置 Flutter
       - name: "Set up Flutter"
         uses: subosito/flutter-action@v1
         with:
           flutter-version: '3.32.8'
 
-      # 设置 APK 名称带日期
       - name: "Set APK filename with date"
         run: |
-          DATE_SUFFIX=$(date +'%d-%H')
-          echo "DATE_SUFFIX=$DATE_SUFFIX" >> $GITHUB_ENV
+          DATE_SUFFIX=$(date +'%M%d-%H%M')
           if [ "$FLUTTER_BRANCH" == "main" ]; then
             APK_NAME="release-${TAG_NAME}-${DATE_SUFFIX}.apk"
           else
             APK_NAME="dev-${TAG_NAME}-${DATE_SUFFIX}.apk"
           fi
           echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+          echo "DATE_SUFFIX=$DATE_SUFFIX" >> $GITHUB_ENV
 
-      # 构建 APK
       - name: "Build APK"
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
           flutter build apk --release
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/$APK_NAME
+          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/${{ env.APK_NAME }}
 
-      # 计算 APK 大小和 MD5
       - name: "Calculate APK Size and MD5"
         id: calculate_apk
         run: |
-          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/$APK_NAME
+          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
           APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
           APK_SIZE=$((APK_SIZE_BYTES / 1024))
           APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
@@ -77,18 +68,6 @@ jobs:
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
 
-      # 删除旧 dev release 和 tag（可选）
-      - name: "Delete old dev release and tag"
-        if: env.FLUTTER_BRANCH == 'dev'
-        run: |
-          DEV_TAG=$TAG_NAME
-          echo "Cleaning old dev release and tag: $DEV_TAG"
-          gh release delete "$DEV_TAG" -y || echo "No old release found"
-          git push origin ":refs/tags/$DEV_TAG" || echo "No old tag found"
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
-
-      # 创建 Release
       - name: "Create Release"
         id: create_release
         uses: actions/create-release@v1
@@ -100,18 +79,17 @@ jobs:
           draft: false
           prerelease: ${{ env.FLUTTER_BRANCH == 'dev' }}
 
-      # 上传 Release APK
       - name: "Upload Release Asset"
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/$APK_NAME
+          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
           asset_name: ${{ env.APK_NAME }}
           asset_content_type: application/vnd.android.package-archive
 
-      # 更新 version JSON（主仓库根目录）
+       # 更新 version JSON（主仓库根目录）
       - name: "Update version JSON"
         run: |
           if [ "$FLUTTER_BRANCH" == "main" ]; then
@@ -136,3 +114,5 @@ jobs:
           git commit -m "Update $VERSION_FILE for release $VERSION_NAME" || echo "No changes to commit"
           git pull --rebase origin main
           git push origin HEAD:main
+
+    
