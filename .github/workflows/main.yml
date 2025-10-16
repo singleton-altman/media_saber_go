@@ -77,8 +77,7 @@ jobs:
           tag_name: ${{ env.TAG_NAME }}
           release_name: ${{ env.FLUTTER_BRANCH == 'main' && format('Release {0}', env.TAG_NAME) || format('Dev Release {0}', env.TAG_NAME) }}
           draft: false
-          prerelease: ${{ env.FLUTTER_BRANCH == 'dev' }}
-
+          
       - name: "Upload Release Asset"
         uses: actions/upload-release-asset@v1
         env:
