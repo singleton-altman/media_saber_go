@@ -1,117 +1,138 @@
 name: Build and Release APK
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - '*'
+    inputs:
+      source_repository:
+        description: 'Flutter 源码 owner/repo，留空使用 Secret REPOSITORY'
+        required: false
+        default: ''
+      source_ref:
+        description: '源码分支或 tag'
+        required: false
+        default: 'main'
+      channel:
+        description: '发布通道'
+        type: choice
+        options:
+          - release
+          - dev
+        default: release
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: "Determine Flutter branch"
-        id: set_fl_branch
+      - name: Configure build
         run: |
-          TAG_NAME=${GITHUB_REF##*/}
-          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
-          if [[ "$TAG_NAME" == *dev* ]]; then
-            echo "FLUTTER_BRANCH=dev" >> $GITHUB_ENV
-          else
-            echo "FLUTTER_BRANCH=main" >> $GITHUB_ENV
-          fi
-          echo "Flutter branch to build: $FLUTTER_BRANCH"
+          R='${{ inputs.source_repository }}'
+          if [ -z "$R" ]; then R='${{ secrets.REPOSITORY }}'; fi
+          echo "SOURCE_REPO=$R" >> $GITHUB_ENV
+          echo "CHANNEL=${{ inputs.channel }}" >> $GITHUB_ENV
 
-      - name: "Checkout main repo"
-        uses: actions/checkout@v3
+      - name: Checkout main repo
+        uses: actions/checkout@v4
         with:
           ref: main
-
-      - name: "Checkout Flutter repo"
-        uses: actions/checkout@v3
-        with:
-          repository: ${{ secrets.REPOSITORY }}
-          path: './media_saber_flutter_3'
-          ref: ${{ env.FLUTTER_BRANCH }}
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
-      - name: "Set up Flutter"
-        uses: subosito/flutter-action@v1
+      - name: Checkout Flutter repo
+        uses: actions/checkout@v4
         with:
-          flutter-version: '3.32.8'
+          repository: ${{ env.SOURCE_REPO }}
+          path: ./media_saber_flutter_3
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
-      - name: "Set APK filename with date"
+      - name: Parse version from pubspec
+        id: pubspec
+        working-directory: media_saber_flutter_3
         run: |
-          DATE_SUFFIX=$(date +'%y.%m.%d-%H')
-          if [ "$FLUTTER_BRANCH" == "main" ]; then
-            APK_NAME="release-${TAG_NAME}-${DATE_SUFFIX}.apk"
+          LINE=$(grep -m1 '^version:' pubspec.yaml | sed 's/#.*//' | tr -d ' \r')
+          VER=${LINE#version:}
+          NAME=${VER%%+*}
+          if [ "$NAME" = "$VER" ]; then
+            CODE=""
           else
-            APK_NAME="dev-${TAG_NAME}-${DATE_SUFFIX}.apk"
+            CODE=${VER##*+}
           fi
-          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
-          echo "DATE_SUFFIX=$DATE_SUFFIX" >> $GITHUB_ENV
+          echo "version_name=$NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$CODE" >> $GITHUB_OUTPUT
 
-      - name: "Build APK"
+      - name: Set release metadata
+        run: |
+          VERSION_NAME="${{ steps.pubspec.outputs.version_name }}"
+          DATE_SUFFIX=$(date +'%y.%m.%d-%H')
+          RELEASE_TAG="$VERSION_NAME"
+          if [ "$CHANNEL" = "dev" ]; then
+            APK_NAME="dev-${VERSION_NAME}-${DATE_SUFFIX}.apk"
+            RELEASE_TITLE="Dev ${VERSION_NAME}"
+          else
+            APK_NAME="release-${VERSION_NAME}-${DATE_SUFFIX}.apk"
+            RELEASE_TITLE="Release ${VERSION_NAME}"
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
+          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+          echo "RELEASE_TITLE=$RELEASE_TITLE" >> $GITHUB_ENV
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.2'
+          channel: stable
+
+      - name: Build APK
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
           flutter build apk --release
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+          mv build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/${APK_NAME}"
 
-      - name: "Calculate APK Size and MD5"
-        id: calculate_apk
+      - name: Calculate APK Size and MD5
         run: |
-          APK_PATH=./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+          APK_PATH="./media_saber_flutter_3/build/app/outputs/flutter-apk/${APK_NAME}"
           APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
           APK_SIZE=$((APK_SIZE_BYTES / 1024))
           APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
           echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
           echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
 
-      - name: "Create Release"
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Remove existing release and tag
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          release_name: ${{ env.FLUTTER_BRANCH == 'main' && format('Release {0}', env.TAG_NAME) || format('Dev Release {0}', env.TAG_NAME) }}
-          draft: false
-          
-      - name: "Upload Release Asset"
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
-          asset_name: ${{ env.APK_NAME }}
-          asset_content_type: application/vnd.android.package-archive
-
-       # 更新 version JSON（主仓库根目录）
-      - name: "Update version JSON"
+          GH_TOKEN: ${{ secrets.PERSON_ACCESS_TOKEN }}
         run: |
-          if [ "$FLUTTER_BRANCH" == "main" ]; then
+          gh release delete "$RELEASE_TAG" --cleanup-tag --yes 2>/dev/null || true
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}" 2>/dev/null || true
+
+      - name: Create Release and upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TITLE }}
+          files: ./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+          token: ${{ secrets.PERSON_ACCESS_TOKEN }}
+
+      - name: Update version JSON
+        env:
+          VERSION_CODE: ${{ steps.pubspec.outputs.version_code }}
+        run: |
+          if [ "$CHANNEL" = "release" ]; then
             VERSION_FILE="version.json"
           else
             VERSION_FILE="version-dev.json"
           fi
-
-          if [ ! -f $VERSION_FILE ]; then
-            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > $VERSION_FILE
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > "$VERSION_FILE"
           fi
-
-          VERSION_NAME=$TAG_NAME
-          DOWNLOAD_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/$APK_NAME
-
-          jq ".versionName = \"$VERSION_NAME\" | .downloadUrl = \"$DOWNLOAD_URL\" | .apkSize = $APK_SIZE | .apkMd5 = \"$APK_MD5\"" $VERSION_FILE > version.tmp && mv version.tmp $VERSION_FILE
-
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add $VERSION_FILE
-          git commit -m "Update $VERSION_FILE for release $VERSION_NAME" || echo "No changes to commit"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${APK_NAME}"
+          VC="$VERSION_CODE"
+          jq --arg vn "$VERSION_NAME" --arg url "$DOWNLOAD_URL" --argjson size "$APK_SIZE" --arg md5 "$APK_MD5" --arg vc "$VC" 'if ($vc | length) > 0 then .versionCode = ($vc | tonumber) else . end | .versionName = $vn | .downloadUrl = $url | .apkSize = $size | .apkMd5 = $md5' "$VERSION_FILE" > version.tmp && mv version.tmp "$VERSION_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$VERSION_FILE"
+          git commit -m "Update $VERSION_FILE for $VERSION_NAME" || echo "No changes to commit"
           git pull --rebase origin main
           git push origin HEAD:main
-
-    
