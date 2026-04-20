@@ -30,7 +30,7 @@ jobs:
           R='${{ inputs.source_repository }}'
           if [ -z "$R" ]; then R='${{ secrets.REPOSITORY }}'; fi
           echo "SOURCE_REPO=$R" >> $GITHUB_ENV
-          echo "CHANNEL=${{ inputs.channel }}" >> $GITHUB_ENV
+          echo "PUBLISH_CHANNEL=${{ inputs.channel }}" >> $GITHUB_ENV
 
       - name: Checkout main repo
         uses: actions/checkout@v4
@@ -66,7 +66,7 @@ jobs:
           VERSION_NAME="${{ steps.pubspec.outputs.version_name }}"
           DATE_SUFFIX=$(date +'%y.%m.%d-%H')
           RELEASE_TAG="$VERSION_NAME"
-          if [ "$CHANNEL" = "dev" ]; then
+          if [ "$PUBLISH_CHANNEL" = "dev" ]; then
             APK_NAME="dev-${VERSION_NAME}-${DATE_SUFFIX}.apk"
             RELEASE_TITLE="Dev ${VERSION_NAME}"
           else
@@ -119,7 +119,7 @@ jobs:
         env:
           VERSION_CODE: ${{ steps.pubspec.outputs.version_code }}
         run: |
-          if [ "$CHANNEL" = "release" ]; then
+          if [ "$PUBLISH_CHANNEL" = "release" ]; then
             VERSION_FILE="version.json"
           else
             VERSION_FILE="version-dev.json"
