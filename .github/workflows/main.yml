@@ -78,10 +78,30 @@ jobs:
           echo "RELEASE_TITLE=$RELEASE_TITLE" >> $GITHUB_ENV
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Read Flutter version from source
+        id: flutter_version
+        working-directory: media_saber_flutter_3
+        run: |
+          VERSION=$(python3 -c 'import json; print(json.load(open(".fvmrc"))["flutter"])')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Bootstrap local dev config
+        working-directory: media_saber_flutter_3
+        run: |
+          if [ ! -f lib/config/local_dev_config.dart ] && [ -f lib/config/local_dev_config.example.dart ]; then
+            cp lib/config/local_dev_config.example.dart lib/config/local_dev_config.dart
+          fi
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.2'
+          flutter-version: ${{ steps.flutter_version.outputs.version }}
           channel: stable
 
       - name: Build APK
