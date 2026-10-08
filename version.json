@@ -1,10 +1,10 @@
 {
   "isForce": false,
   "isIgnorable": false,
-  "versionCode": 30299,
-  "versionName": "1.8.8",
+  "versionCode": 30312,
+  "versionName": "2.0.0",
   "updateContent": "修复 bug，优化体验。",
-  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/1.8.8/release-1.8.8-26.07.14-03.apk",
-  "apkSize": 145659,
-  "apkMd5": "1550f7231aea4ed8d748844fd3bb8485"
+  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.0.0/release-2.0.0-26.10.08-10.apk",
+  "apkSize": 225549,
+  "apkMd5": "784e9f5595469bbb7c72f801fd8313e9"
 }
