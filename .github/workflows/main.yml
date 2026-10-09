@@ -67,14 +67,14 @@ jobs:
           DATE_SUFFIX=$(date +'%y.%m.%d-%H')
           RELEASE_TAG="$VERSION_NAME"
           if [ "$PUBLISH_CHANNEL" = "dev" ]; then
-            APK_NAME="dev-${VERSION_NAME}-${DATE_SUFFIX}.apk"
+            APK_PREFIX="dev-${VERSION_NAME}-${DATE_SUFFIX}"
             RELEASE_TITLE="Dev ${VERSION_NAME}"
           else
-            APK_NAME="release-${VERSION_NAME}-${DATE_SUFFIX}.apk"
+            APK_PREFIX="release-${VERSION_NAME}-${DATE_SUFFIX}"
             RELEASE_TITLE="Release ${VERSION_NAME}"
           fi
           echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
-          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+          echo "APK_PREFIX=$APK_PREFIX" >> $GITHUB_ENV
           echo "RELEASE_TITLE=$RELEASE_TITLE" >> $GITHUB_ENV
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
 
@@ -104,21 +104,35 @@ jobs:
           flutter-version: ${{ steps.flutter_version.outputs.version }}
           channel: stable
 
-      - name: Build APK
+      - name: Build split APKs
         run: |
           cd ./media_saber_flutter_3
           flutter pub get
-          flutter build apk --release
-          mv build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/${APK_NAME}"
+          # 仅发布常见架构，避免通用 APK 携带三份 native 库导致体积膨胀。
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64
+          OUT="build/app/outputs/flutter-apk"
+          for ABI in armeabi-v7a arm64-v8a; do
+            mv "$OUT/app-${ABI}-release.apk" "$OUT/${APK_PREFIX}-${ABI}.apk"
+          done
 
-      - name: Calculate APK Size and MD5
+      - name: Calculate APK metadata
         run: |
-          APK_PATH="./media_saber_flutter_3/build/app/outputs/flutter-apk/${APK_NAME}"
-          APK_SIZE_BYTES=$(stat -c%s "$APK_PATH")
-          APK_SIZE=$((APK_SIZE_BYTES / 1024))
-          APK_MD5=$(md5sum "$APK_PATH" | awk '{ print $1 }')
-          echo "APK_SIZE=$APK_SIZE" >> $GITHUB_ENV
-          echo "APK_MD5=$APK_MD5" >> $GITHUB_ENV
+          OUT="./media_saber_flutter_3/build/app/outputs/flutter-apk"
+          VARIANTS='[]'
+          for ABI in armeabi-v7a arm64-v8a; do
+            FILE="${APK_PREFIX}-${ABI}.apk"
+            PATHNAME="$OUT/$FILE"
+            SIZE_BYTES=$(stat -c%s "$PATHNAME")
+            SIZE=$((SIZE_BYTES / 1024))
+            MD5=$(md5sum "$PATHNAME" | awk '{print $1}')
+            URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${FILE}"
+            VARIANTS=$(jq -c --arg abi "$ABI" --arg url "$URL" --arg md5 "$MD5" --argjson size "$SIZE" '. + [{abi: $abi, downloadUrl: $url, apkSize: $size, apkMd5: $md5}]' <<< "$VARIANTS")
+          done
+          DEFAULT=$(jq -c '.[] | select(.abi == "arm64-v8a")' <<< "$VARIANTS")
+          echo "APK_SIZE=$(jq -r '.apkSize' <<< "$DEFAULT")" >> "$GITHUB_ENV"
+          echo "APK_MD5=$(jq -r '.apkMd5' <<< "$DEFAULT")" >> "$GITHUB_ENV"
+          echo "APK_VARIANTS=$VARIANTS" >> "$GITHUB_ENV"
 
       - name: Remove existing release and tag
         env:
@@ -132,7 +146,7 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.RELEASE_TITLE }}
-          files: ./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
+          files: ./media_saber_flutter_3/build/app/outputs/flutter-apk/${{ env.APK_PREFIX }}-*.apk
           token: ${{ secrets.PERSON_ACCESS_TOKEN }}
 
       - name: Update version JSON
@@ -147,9 +161,9 @@ jobs:
           if [ ! -f "$VERSION_FILE" ]; then
             echo '{"versionName":"","downloadUrl":"","apkSize":0,"apkMd5":""}' > "$VERSION_FILE"
           fi
-          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${APK_NAME}"
+          DEFAULT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${APK_PREFIX}-arm64-v8a.apk"
           VC="$VERSION_CODE"
-          jq --arg vn "$VERSION_NAME" --arg url "$DOWNLOAD_URL" --argjson size "$APK_SIZE" --arg md5 "$APK_MD5" --arg vc "$VC" 'if ($vc | length) > 0 then .versionCode = ($vc | tonumber) else . end | .versionName = $vn | .downloadUrl = $url | .apkSize = $size | .apkMd5 = $md5' "$VERSION_FILE" > version.tmp && mv version.tmp "$VERSION_FILE"
+          jq --arg vn "$VERSION_NAME" --arg url "$DEFAULT_URL" --argjson size "$APK_SIZE" --arg md5 "$APK_MD5" --argjson variants "$APK_VARIANTS" --arg vc "$VC" 'if ($vc | length) > 0 then .versionCode = ($vc | tonumber) else . end | .versionName = $vn | .downloadUrl = $url | .apkSize = $size | .apkMd5 = $md5 | .apkVariants = $variants' "$VERSION_FILE" > version.tmp && mv version.tmp "$VERSION_FILE"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$VERSION_FILE"
