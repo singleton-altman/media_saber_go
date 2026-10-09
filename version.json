@@ -4,7 +4,21 @@
   "versionCode": 30312,
   "versionName": "2.0.0",
   "updateContent": "修复 bug，优化体验。",
-  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.0.0/release-2.0.0-26.10.08-10.apk",
-  "apkSize": 225549,
-  "apkMd5": "784e9f5595469bbb7c72f801fd8313e9"
+  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.0.0/release-2.0.0-26.10.09-03-arm64-v8a.apk",
+  "apkSize": 118683,
+  "apkMd5": "8743245c123b63730b45a62286f1d625",
+  "apkVariants": [
+    {
+      "abi": "armeabi-v7a",
+      "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.0.0/release-2.0.0-26.10.09-03-armeabi-v7a.apk",
+      "apkSize": 113128,
+      "apkMd5": "d69a0137329175e6d88666972d06bccc"
+    },
+    {
+      "abi": "arm64-v8a",
+      "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.0.0/release-2.0.0-26.10.09-03-arm64-v8a.apk",
+      "apkSize": 118683,
+      "apkMd5": "8743245c123b63730b45a62286f1d625"
+    }
+  ]
 }
