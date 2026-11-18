@@ -1,24 +1,24 @@
 {
   "isForce": false,
   "isIgnorable": false,
-  "versionCode": 30313,
-  "versionName": "2.1.0",
+  "versionCode": 30314,
+  "versionName": "2.2.0",
   "updateContent": "修复 bug，优化体验。",
-  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.1.0/release-2.1.0-26.10.31-13-arm64-v8a.apk",
-  "apkSize": 119340,
-  "apkMd5": "40cfeed542192b723fd3e4dddc129310",
+  "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.2.0/release-2.2.0-26.11.18-03-arm64-v8a.apk",
+  "apkSize": 114431,
+  "apkMd5": "0376aa29932918dcee4ee8e0c93ebd47",
   "apkVariants": [
     {
       "abi": "armeabi-v7a",
-      "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.1.0/release-2.1.0-26.10.31-13-armeabi-v7a.apk",
-      "apkSize": 113641,
-      "apkMd5": "ad8600bbe119679fecb0f41974cab333"
+      "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.2.0/release-2.2.0-26.11.18-03-armeabi-v7a.apk",
+      "apkSize": 111164,
+      "apkMd5": "01102d6a81b1d4799887417be31ae801"
     },
     {
       "abi": "arm64-v8a",
-      "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.1.0/release-2.1.0-26.10.31-13-arm64-v8a.apk",
-      "apkSize": 119340,
-      "apkMd5": "40cfeed542192b723fd3e4dddc129310"
+      "downloadUrl": "https://github.com/singleton-altman/media_saber_go/releases/download/2.2.0/release-2.2.0-26.11.18-03-arm64-v8a.apk",
+      "apkSize": 114431,
+      "apkMd5": "0376aa29932918dcee4ee8e0c93ebd47"
     }
   ]
 }
